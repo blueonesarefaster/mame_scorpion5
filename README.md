@@ -1,4 +1,6 @@
-# MAME
+# MAME_Scorpion5
+
+MAME_Scorpion5 is purely for progressing the emulation of the BFG Scorpion5 system without having to worry about the standards required to commit to the main MAME project. 
 
 ## What is MAME?
 
