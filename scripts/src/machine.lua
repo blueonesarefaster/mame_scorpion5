@@ -5440,3 +5440,14 @@ if (MACHINES["CS4341"]~=null) then
 		MAME_DIR .. "src/devices/machine/cs4341.h",
 	}
 end
+
+---------------------------------------------------
+--
+--@src/devices/machine/isl12027.h,MACHINES["ISL12027"] = true
+---------------------------------------------------
+if (MACHINES["ISL12027"]~=null) then
+	files {
+		MAME_DIR .. "src/devices/machine/isl12027.cpp",
+		MAME_DIR .. "src/devices/machine/isl12027.h",
+	}
+end
