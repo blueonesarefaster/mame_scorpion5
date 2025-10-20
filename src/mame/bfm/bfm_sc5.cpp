@@ -141,13 +141,26 @@ PL1 = Compact Flash Slot
 #include "awpvid.h"
 
 #include "bfm_sc45_helper.h"
-#include "machine/mcf5206e.h"
 #include "speaker.h"
 
 #include "bfm_sc5.lh"
 #include "bfm_sc5_gu96x8.lh"
 
 
+
+uint16_t bfm_sc5_state::sc5_duart_r(offs_t offset, uint16_t mem_mask)
+{
+	if (ACCESSING_BITS_8_15)
+	{
+		return m_duart->read(offset)<<8;
+	}
+	else
+	{
+		logerror("%s: duart_r %1x %04x\n", machine().describe_context(), offset, mem_mask);
+		return 0;
+	}
+
+}
 
 void bfm_sc5_state::sc5_duart_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
@@ -167,15 +180,39 @@ void bfm_sc5_state::sc5_duart_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 uint8_t bfm_sc5_state::sc5_mux1_r(offs_t offset)
 {
-	switch (offset)
+	if(offset < 128)
 	{
-		case 0x20:
-			return machine().rand();
+		if(offset & 0x0f)
+		{
+			return 0;
+		}
+		else
+		{
+			if((offset>>4) < 4)
+			{
+				uint8_t data = (m_mux1_in[(offset>>4) + 8]->read() & 0x7)<<5;
+				return m_mux1_in[(offset>>4)]->read() | data;
+			}
+			else
+			{
+				uint8_t data = (m_mux1_in[(offset>>4) + 4]->read() & 0x18)<<2;
+				return m_mux1_in[(offset>>4)]->read() | data;
+			}
+		}
+	}
+	else
+	{
+		//switch (offset)
+		//{
+//			case 0x20:
+				//return 0xff;
+				//return machine().rand();
+		//}
 	}
 
 	logerror("%s: sc5_mux1_r %1x\n", machine().describe_context(), offset);
 
-	return 0x00;
+	return 0xff;
 }
 
 
@@ -191,7 +228,42 @@ void bfm_sc5_state::sc5_mux1_w(offs_t offset, uint8_t data)
 	}
 }
 
+uint8_t bfm_sc5_state::sc5_mux2_r(offs_t offset)
+{
+	if(offset < 128)
+	{
+		if(offset & 0x0f)
+		{
+			return 0;
+		}
+		else
+		{
+			if((offset>>4) < 4)
+			{
+				uint8_t data = (m_mux2_in[(offset>>4) + 8]->read() & 0x7)<<5;
+				return m_mux2_in[(offset>>4)]->read() | data;
+			}
+			else
+			{
+				uint8_t data = (m_mux2_in[(offset>>4) + 4]->read() & 0x18)<<2;
+				return m_mux2_in[(offset>>4)]->read() | data;
+			}
+		}
+	}
+	else
+	{
+		//switch (offset)
+		//{
+//			case 0x20:
+				//return 0xff;
+				//return machine().rand();
+		//}
+	}
 
+	logerror("%s: sc5_mux2_r %1x\n", machine().describe_context(), offset);
+
+	return 0xff;
+}
 
 void bfm_sc5_state::sc5_mux2_w(offs_t offset, uint8_t data)
 {
@@ -205,18 +277,59 @@ void bfm_sc5_state::sc5_mux2_w(offs_t offset, uint8_t data)
 	}
 }
 
+void bfm_sc5_state::sec_port_w(offs_t offset, uint8_t data)
+{
+	switch (offset)
+	{
+		case 0x0:
+			m_sec->cs_w(BIT(data,2));
+			m_sec->data_w(BIT(data,1));
+			m_sec->clk_w(BIT(data,0));
+			//m_maincpu->gpio_pin_w(1,m_sec->data_r());
+			//m_maincpu->gpio_pin_w(0,1); // test switch input - to sort
+			break;
+
+		case 0x1:
+		case 0x2:
+		case 0x3:
+			logerror("%s: 01020300_w %d - %02x\n", machine().describe_context(), offset, data);
+			break;
+	}
+}
+
+uint8_t bfm_sc5_state::read_port_a()
+{
+	return (m_sec->data_r() ? 2 : 0 ) | m_test_switch->read();
+	//m_maincpu->gpio_pin_w(1,m_sec->data_r());
+	//m_maincpu->gpio_pin_w(0,1); // test switch input - to sort
+}
+
+void bfm_sc5_state::yamaha_w(offs_t offset, uint8_t data)
+{
+	m_ymz->write(BIT(offset,1), data);
+}
+
+uint8_t bfm_sc5_state::yamaha_r(offs_t offset)
+{
+	return m_ymz->read(BIT(offset,1));
+}
 
 void bfm_sc5_state::sc5_map(address_map &map)
 {
 	// ROM (max size?)
 	map(0x00000000, 0x002fffff).rom();
 	// ?
-	map(0x01000000, 0x0100ffff).ram();
+	map(0x01000000, 0x0100ffff).ram().share("nvram");;
 
 #if 1
 	// dev1
-	map(0x01010000, 0x010101ff).rw(FUNC(bfm_sc5_state::sc5_mux1_r), FUNC(bfm_sc5_state::sc5_mux1_w)); // guess
+	map(0x01010000, 0x010101ff).rw(FUNC(bfm_sc5_state::sc5_mux2_r), FUNC(bfm_sc5_state::sc5_mux2_w));
+
+	map(0x010102f0, 0x010102f3).w(FUNC(bfm_sc5_state::reel3_w));
+
+	map(0x01010330, 0x01010333).w(FUNC(bfm_sc5_state::reel24_w));
 #endif
+
 
 #if 0
 
@@ -231,11 +344,11 @@ void bfm_sc5_state::sc5_map(address_map &map)
 
 	map(0x010102c0, 0x010102c3).nopw();
 
-	map(0x010102f0, 0x010102f3).nopw();
+	map(0x010102f0, 0x010102f3).w(FUNC(bfm_sc5_state::reel3_w));
 
 	map(0x01010300, 0x01010303).nopw();
 
-	map(0x01010330, 0x01010333).nopw();
+	map(0x01010330, 0x01010333).w(FUNC(bfm_sc5_state::reel24_w));
 
 	map(0x01010360, 0x01010363).nopw();
 
@@ -243,9 +356,11 @@ void bfm_sc5_state::sc5_map(address_map &map)
 	map(0x01010390, 0x01010393).nopw();
 #endif
 
+	map(0x01010244, 0x0101024b).rw(FUNC(bfm_sc5_state::yamaha_r),FUNC(bfm_sc5_state::yamaha_w));
+
 #if 1
-	// dev2
-	map(0x01020000, 0x010201ff).w(FUNC(bfm_sc5_state::sc5_mux2_w)); // guess
+	
+	map(0x01020000, 0x010201ff).rw(FUNC(bfm_sc5_state::sc5_mux1_r), FUNC(bfm_sc5_state::sc5_mux1_w));
 #endif
 
 #if 0
@@ -263,7 +378,8 @@ void bfm_sc5_state::sc5_map(address_map &map)
 #endif
 	map(0x010202F0, 0x010202F3).rw(FUNC(bfm_sc5_state::sc5_10202F0_r), FUNC(bfm_sc5_state::sc5_10202F0_w));
 #if 1
-	map(0x01020330, 0x01020333).nopw();
+	map(0x01020300, 0x01020303).w(FUNC(bfm_sc5_state::sec_port_w));
+	map(0x01020330, 0x01020333).w(FUNC(bfm_sc5_state::reel12_w));
 
 	map(0x01020350, 0x01020353).nopw();
 	map(0x01020360, 0x01020363).nopw();
@@ -271,16 +387,411 @@ void bfm_sc5_state::sc5_map(address_map &map)
 
 	map(0x01020390, 0x01020393).nopw();
 #endif
-	map(0x02000000, 0x0200001f).w(FUNC(bfm_sc5_state::sc5_duart_w));
+	map(0x02000000, 0x0200001f).rw(FUNC(bfm_sc5_state::sc5_duart_r),FUNC(bfm_sc5_state::sc5_duart_w));
 
 	// ram
 	map(0x40000000, 0x4000ffff).ram();
-
-	// peripherals
-	map(0xffff0000, 0xffff03ff).rw("maincpu_onboard", FUNC(mcf5206e_peripheral_device::dev_r), FUNC(mcf5206e_peripheral_device::dev_w)); // technically this can be moved with MBAR
 }
 
 INPUT_PORTS_START( bfm_sc5 )
+	PORT_START("MUX1IN-0")
+	PORT_DIPNAME( 0x01, 0x01, "IN1 0-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN1 0-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN1 0-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN1 0-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN1 0-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX1IN-1")
+	PORT_BIT( 0x01, IP_ACTIVE_LOW, IPT_BUTTON1) PORT_NAME("Cancel")
+	PORT_BIT( 0x02, IP_ACTIVE_LOW, IPT_BUTTON3) PORT_NAME("Hold 1")
+	PORT_BIT( 0x04, IP_ACTIVE_LOW, IPT_BUTTON3) PORT_NAME("Hold 2")
+	PORT_BIT( 0x08, IP_ACTIVE_LOW, IPT_BUTTON4) PORT_NAME("Hold 3")
+	PORT_BIT( 0x10, IP_ACTIVE_LOW, IPT_BUTTON4) PORT_NAME("Collect")
+
+	PORT_START("MUX1IN-2")
+	PORT_BIT( 0x01, IP_ACTIVE_LOW, IPT_BUTTON5) PORT_NAME("Change Stake")
+	PORT_BIT( 0x04, IP_ACTIVE_LOW, IPT_BUTTON5) PORT_NAME("Start")
+	PORT_DIPNAME( 0x02, 0x02, "IN1 2-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN1 2-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN1 2-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX1IN-3")
+	PORT_DIPNAME( 0x01, 0x01, "IN1 3-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN1 3-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN1 3-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN1 3-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN1 3-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX1IN-4")
+	PORT_DIPNAME( 0x01, 0x01, "IN1 4-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN1 4-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN1 4-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN1 4-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN1 4-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX1IN-5")
+	PORT_DIPNAME( 0x01, 0x01, "IN1 5-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN1 5-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN1 5-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN1 5-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN1 5-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX1IN-6")
+	PORT_DIPNAME( 0x01, 0x01, "IN1 6-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN1 6-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN1 6-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN1 6-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN1 6-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX1IN-7")
+	PORT_DIPNAME( 0x01, 0x01, "IN1 7-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN1 7-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN1 7-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN1 7-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN1 7-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX1IN-8")
+	PORT_DIPNAME( 0x01, 0x01, "IN1 8-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN1 8-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN1 8-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN1 8-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN1 8-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX1IN-9")
+	PORT_DIPNAME( 0x01, 0x01, "IN1 9-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN1 9-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN1 9-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN1 9-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN1 9-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX1IN-10")
+	PORT_DIPNAME( 0x01, 0x01, "IN1 10-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN1 10-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN1 10-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN1 10-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN1 10-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX1IN-11")
+	PORT_DIPNAME( 0x01, 0x01, "IN1 11-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN1 11-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN1 11-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN1 11-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN1 11-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX2IN-0")
+	PORT_DIPNAME( 0x01, 0x01, "IN2 0-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN2 0-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN2 0-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN2 0-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN2 0-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX2IN-1")
+	PORT_DIPNAME( 0x01, 0x01, "IN2 1-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN2 1-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN2 1-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN2 1-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN2 1-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX2IN-2")
+	PORT_DIPNAME( 0x01, 0x01, "IN2 2-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN2 2-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN2 2-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN2 2-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN2 2-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX2IN-3")
+	PORT_DIPNAME( 0x01, 0x01, "IN2 3-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN2 3-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN2 3-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN2 3-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN2 3-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX2IN-4")
+	PORT_DIPNAME( 0x01, 0x01, "IN2 4-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN2 4-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN2 4-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN2 4-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN2 4-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX2IN-5")
+	PORT_DIPNAME( 0x01, 0x01, "IN2 5-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN2 5-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN2 5-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN2 5-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN2 5-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX2IN-6")
+	PORT_DIPNAME( 0x01, 0x01, "IN2 6-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN2 6-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN2 6-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN2 6-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN2 6-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX2IN-7")
+	PORT_DIPNAME( 0x01, 0x01, "IN2 7-0" )
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN2 7-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN2 7-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN2 7-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN2 7-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX2IN-8")
+	PORT_DIPNAME( 0x01, 0x01, "IN2 8-0" )		PORT_DIPLOCATION("DIL1:01")
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN2 8-1" )		PORT_DIPLOCATION("DIL1:02")
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN2 8-2" )		PORT_DIPLOCATION("DIL1:03")
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN2 8-3" )		PORT_DIPLOCATION("DIL1:04")
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN2 8-4" )		PORT_DIPLOCATION("DIL1:05")
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX2IN-9")
+	PORT_DIPNAME( 0x01, 0x01, "IN2 9-0" )		 PORT_DIPLOCATION("DIL1:06")
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN2 9-1" )		 PORT_DIPLOCATION("DIL1:07")
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN2 9-2" )		 PORT_DIPLOCATION("DIL1:08")
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN2 9-3" )		 PORT_DIPLOCATION("DIL2:01")
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN2 9-4" )		 PORT_DIPLOCATION("DIL2:02")
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX2IN-10")
+	PORT_DIPNAME( 0x01, 0x01, "IN2 10-0" )		 PORT_DIPLOCATION("DIL2:03")
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN2 10-1" )		 PORT_DIPLOCATION("DIL2:04")
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN2 10-2" )		 PORT_DIPLOCATION("DIL2:05")
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN2 10-3" )		 PORT_DIPLOCATION("DIL2:06")
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN2 10-4" )		 PORT_DIPLOCATION("DIL2:07")
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("MUX2IN-11")
+	PORT_DIPNAME( 0x01, 0x01, "IN2 11-0" )		PORT_DIPLOCATION("DIL2:08")
+	PORT_DIPSETTING(    0x01, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x02, 0x02, "IN2 11-1" )
+	PORT_DIPSETTING(    0x02, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x04, 0x04, "IN2 11-2" )
+	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x08, 0x08, "IN2 11-3" )
+	PORT_DIPSETTING(    0x08, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+	PORT_DIPNAME( 0x10, 0x10, "IN2 11-4" )
+	PORT_DIPSETTING(    0x10, DEF_STR( Off ) )
+	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
+
+	PORT_START("TEST_SWITCH")
+	PORT_BIT( 0x01, IP_ACTIVE_LOW, IPT_SERVICE ) PORT_NAME("Green Test")
+
+
 INPUT_PORTS_END
 
 uint8_t bfm_sc5_state::sc5_10202F0_r(offs_t offset)
@@ -292,7 +803,8 @@ uint8_t bfm_sc5_state::sc5_10202F0_r(offs_t offset)
 		case 0x2:
 		case 0x3:
 			logerror("%s: sc5_10202F0_r %d\n", machine().describe_context(), offset);
-			return machine().rand();
+			//return machine().rand();
+			return 0xff;
 	}
 
 	return 0;
@@ -317,48 +829,195 @@ void bfm_sc5_state::sc5_10202F0_w(offs_t offset, uint8_t data)
 
 void bfm_sc5_state::bfm_sc5_duart_irq_handler(int state)
 {
+	m_maincpu->write_irq_4(state);
 	logerror("bfm_sc5_duart_irq_handler\n");
 }
 
 void bfm_sc5_state::bfm_sc5_duart_txa(int state)
 {
-	logerror("bfm_sc5_duart_tx\n");
+	m_duart->rx_a_w(state);
+	logerror("bfm_sc5_duart_a_tx\n");
+}
+
+void bfm_sc5_state::bfm_sc5_duart_txb(int state)
+{
+	m_duart->rx_b_w(state);
+	logerror("bfm_sc5_duart_b_tx\n");
 }
 
 uint8_t bfm_sc5_state::bfm_sc5_duart_input_r()
 {
 	logerror("bfm_sc5_duart_input_r\n");
-	return 0xff;
+	return m_optic_pattern;
+}
+
+void bfm_sc5_state::cpu_uart_tx1(int state)
+{
+	logerror("cpu 1 tx\n");
+}
+
+void bfm_sc5_state::cpu_uart_tx2(int state)
+{
+	logerror("cpu 2 tx\n");
+}
+
+void bfm_sc5_state::sda(u8 state)
+{
+	m_rtc->write_sda(state);
+	m_security->write_sda(state);
+	m_dac->write_sda(state);
+}
+
+int bfm_sc5_state::sda_r()
+{
+	return (m_rtc->read_sda() & m_security->read_sda() & m_dac->read_sda()) ? 1 : 0;
+}
+
+void bfm_sc5_state::scl(u8 state)
+{
+	m_rtc->write_scl(state);
+	m_security->write_scl(state);
+	m_dac->write_scl(state);
+	m_maincpu->scl_write(state);
+}
+
+void bfm_sc5_state::reel12_w(uint8_t data)
+{
+	m_reel12_latch = data;
+
+	if(m_reel[0])
+	{
+		m_reel[0]->update( data & 0x0f );
+		awp_draw_reel(machine(),"reel1", *m_reel[0]);
+	}
+}
+
+void bfm_sc5_state::reel24_w(uint8_t data)
+{
+	m_reel24_latch = data;
+	
+	if(m_reel[3])
+	{
+		m_reel[3]->update( data & 0x0f );
+		awp_draw_reel(machine(),"reel4", *m_reel[3]);
+	}
+
+	if(m_reel[1])
+	{
+		uint8_t drive = (m_reel12_latch >> 4) & 0x03;
+		drive |= (( m_reel24_latch >> 2 ) & 0x0c);
+		m_reel[1]->update( drive );
+		awp_draw_reel(machine(),"reel2", *m_reel[1]);
+	}
+}
+
+void bfm_sc5_state::reel3_w(uint8_t data)
+{
+	m_reel3_latch = data;
+
+	if(m_reel[2])
+	{
+		m_reel[2]->update(( data >> 1 ) & 0x0f );
+		awp_draw_reel(machine(),"reel3", *m_reel[2]);
+	}
 }
 
 void bfm_sc5_state::bfm_sc5_duart_output_w(uint8_t data)
 {
 	logerror("bfm_sc5_duart_output_w\n");
+	m_reel56_latch = data;
+
+	if(m_reel[4])
+	{
+		m_reel[4]->update( data & 0x0f );
+		awp_draw_reel(machine(),"reel5", *m_reel[4]);
+	}
+
+	if (m_reel[5])
+	{
+		m_reel[5]->update(( data >> 4 ) & 0x0f );
+		awp_draw_reel(machine(),"reel6", *m_reel[5]);
+	}
+
 }
 
 void bfm_sc5_state::bfm_sc5(machine_config &config)
 {
 	MCF5206E(config, m_maincpu, 40000000); /* MCF5206eFT */
 	m_maincpu->set_addrmap(AS_PROGRAM, &bfm_sc5_state::sc5_map);
-	MCF5206E_PERIPHERAL(config, "maincpu_onboard", 0, m_maincpu);
+	m_maincpu->sda_w_cb().set(FUNC(bfm_sc5_state::sda));
+	m_maincpu->sda_r_cb().set(FUNC(bfm_sc5_state::sda_r));
+	m_maincpu->scl_w_cb().set(FUNC(bfm_sc5_state::scl));
+	m_maincpu->tx1_w_cb().set(FUNC(bfm_sc5_state::cpu_uart_tx1));
+	m_maincpu->tx2_w_cb().set(FUNC(bfm_sc5_state::cpu_uart_tx2));
+	m_maincpu->gpio_r_cb().set(FUNC(bfm_sc5_state::read_port_a));
+	
+	NVRAM(config, "nvram", nvram_device::DEFAULT_ALL_0);
+	
+	ISL12027(config, m_rtc, 32768);
 
 	/* sound hardware */
 	SPEAKER(config, "mono").front_center();
 
-	MC68681(config, m_duart, 16000000/4); // ?? Mhz
-	m_duart->set_clocks(16000000/2/8, 16000000/2/16, 16000000/2/16, 16000000/2/8);
+	MC68681(config, m_duart, 3686400); // ?? Mhz
+	//m_duart->set_clocks(16000000/2/8, 16000000/2/16, 16000000/2/16, 16000000/2/8);
 	m_duart->irq_cb().set(FUNC(bfm_sc5_state::bfm_sc5_duart_irq_handler));
 	m_duart->a_tx_cb().set(FUNC(bfm_sc5_state::bfm_sc5_duart_txa));
+	m_duart->b_tx_cb().set(FUNC(bfm_sc5_state::bfm_sc5_duart_txb));
 	m_duart->inport_cb().set(FUNC(bfm_sc5_state::bfm_sc5_duart_input_r));
 	m_duart->outport_cb().set(FUNC(bfm_sc5_state::bfm_sc5_duart_output_w));
 
 	// BFM_BDA(config, m_vfd0, 60, 0);
 	BFM_GU96X8M_K657C2(config, m_vfd1, 60, 0);
 
+	BFM_SC5_SECURITY(config, m_security, 4000000);
+	
+	CS4341(config, m_dac, 0);
 
 	// config.set_default_layout(layout_bfm_sc5);
 	config.set_default_layout(layout_bfm_sc5_gu96x8);
 
 	YMZ280B(config, m_ymz, 16000000); // ?? Mhz
 	m_ymz->add_route(ALL_OUTPUTS, "mono", 1.0);
+	
+	SEC(config, m_sec);
+}
+
+void bfm_sc5_state::sc5_6reels(machine_config &config)
+{
+	printf("sc5_6reels\n");
+	bfm_sc5(config);
+	
+	REEL(config, m_reel[0], STARPOINT_48STEP_REEL, 16, 24, 0x09, 7);
+	m_reel[0]->optic_handler().set(FUNC(bfm_sc5_state::reel_optic_cb<0>));
+	REEL(config, m_reel[1], STARPOINT_48STEP_REEL, 16, 24, 0x09, 7);
+	m_reel[1]->optic_handler().set(FUNC(bfm_sc5_state::reel_optic_cb<1>));
+	REEL(config, m_reel[2], STARPOINT_48STEP_REEL, 16, 24, 0x09, 7);
+	m_reel[2]->optic_handler().set(FUNC(bfm_sc5_state::reel_optic_cb<2>));
+	REEL(config, m_reel[3], STARPOINT_48STEP_REEL, 16, 24, 0x09, 7);
+	m_reel[3]->optic_handler().set(FUNC(bfm_sc5_state::reel_optic_cb<3>));
+	REEL(config, m_reel[4], STARPOINT_48STEP_REEL, 16, 24, 0x09, 7);
+	m_reel[4]->optic_handler().set(FUNC(bfm_sc5_state::reel_optic_cb<4>));
+	REEL(config, m_reel[5], STARPOINT_48STEP_REEL, 16, 24, 0x09, 7);
+	m_reel[5]->optic_handler().set(FUNC(bfm_sc5_state::reel_optic_cb<5>));
+
+}
+
+void bfm_sc5_state::machine_reset()
+{
+	bfm_sc45_state::machine_reset();
+}
+
+void bfm_sc5_state::machine_start()
+{
+	printf("bfm_sc5_state::machine_start\n");
+	bfm_sc45_state::machine_start();
+
+	//m_nvram->set_base(m_mainram, sizeof(m_mainram));
+
+	//m_maincpu->set_port_callbacks(
+			//m68307_cpu_device::porta_read_delegate(*this, FUNC(sc4_state::bfm_sc4_68307_porta_r)),
+			//m68307_cpu_device::porta_write_delegate(*this, FUNC(sc4_state::bfm_sc4_68307_porta_w)),
+			//m68307_cpu_device::portb_read_delegate(*this, FUNC(sc4_state::bfm_sc4_68307_portb_r)),
+			//m68307_cpu_device::portb_write_delegate(*this, FUNC(sc4_state::bfm_sc4_68307_portb_w)));
 }
