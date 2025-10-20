@@ -5429,3 +5429,14 @@ if (MACHINES["SCI4"]~=null) then
 		MAME_DIR .. "src/devices/machine/sci4.h",
 	}
 end
+
+---------------------------------------------------
+--
+--@src/devices/machine/cs4341.h,MACHINES["CS4341"] = true
+---------------------------------------------------
+if (MACHINES["CS4341"]~=null) then
+	files {
+		MAME_DIR .. "src/devices/machine/cs4341.cpp",
+		MAME_DIR .. "src/devices/machine/cs4341.h",
+	}
+end
