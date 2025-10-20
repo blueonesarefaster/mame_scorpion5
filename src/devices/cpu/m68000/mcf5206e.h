@@ -186,8 +186,9 @@ class coldfire_mbus_device : public device_t {
 
 		void mbus_map(address_map &map) ATTR_COLD;
 
-		void sda_write(u8 state){ m_tx_in = state; }
+		void scl_write(u8 state);
 		auto sda_cb() ATTR_COLD { return write_sda.bind(); }
+		auto sdar_cb() ATTR_COLD { return read_sda.bind(); }
 		auto scl_cb() ATTR_COLD { return write_scl.bind(); }
 		auto irq_cb() ATTR_COLD { return write_irq.bind(); }
 
@@ -198,12 +199,48 @@ class coldfire_mbus_device : public device_t {
 	private:
 		// MBCR
 		enum {
-			RSTA = (1 << 2),
-			TXAK = (1 << 3),
-			MTX  = (1 << 4),
-			MSTA = (1 << 5),
-			MIEN = (1 << 6),
-			MEN  = (1 << 7)
+			RSTA = 2,
+			TXAK,
+			MTX,
+			MSTA,
+			MIEN,
+			MEN
+		};
+		
+		// MBSR
+		enum {
+			RXAK = (1 << 0),
+			MIF  = (1 << 1),
+			SRW  = (1 << 2),
+			MAL  = (1 << 4),
+			MBB  = (1 << 5),
+			MAAS = (1 << 6),
+			MCF  = (1 << 7)
+		};
+		
+		// states
+		enum {
+			STATE_IDLE,
+			STATE_IDLE_IN_USE,
+			STATE_START_BIT,
+			STATE_STOP_BIT_CLOCK_HIGH,
+			STATE_STOP_BIT_DATA_HIGH,
+			STATE_RESTART_BIT_CLOCK_HIGH,
+			STATE_RESTART_BIT_DATA_LOW,
+			STATE_TX_RX,
+			//STATE_CLOCK_LOW_FOR_START,
+			//STATE_CLOCK_HIGH_FOR_STOP,
+			//STATE_DATA_HIGH_FOR_STOP,
+			//STATE_IDLE_AFTER_STOP,
+			//STATE_SET_TX_DATA,
+			STATE_SET_TX_CLOCK_HIGH,
+			STATE_SET_TX_CLOCK_LOW,
+			STATE_SET_TX_ACK_CLOCK_HIGH,
+			STATE_READ_TX_ACK,
+			//STATE_IDLE_AFTER_ACK,
+			//STATE_SET_RX_ACK,
+			//STATE_CLOCK_HIGH_RESTART,
+			//STATE_DATA_LOW_FOR_START
 		};
 
 		TIMER_CALLBACK_MEMBER(mbus_callback);
@@ -214,6 +251,7 @@ class coldfire_mbus_device : public device_t {
 		inline u8 mbcr_r(){ return m_mbcr; }
 		u8 mbsr_r();
 		inline u8 mfdr_r(){ return m_mfdr; }
+		void start_timer(u16 div);
 
 		void madr_w(u8 data);
 		void mbdr_w(u8 data);
@@ -227,14 +265,22 @@ class coldfire_mbus_device : public device_t {
 		u8 m_mfdr;
 		u8 m_mbdr;
 
-		bool m_tx_in_progress;
+		bool m_done_nak_read;
+		bool m_byte_to_tx;
 		bool m_clk_state;
+		u8 m_clock_count;
 		u8 m_tx_bit;
-		u8 m_tx_out;
-		u8 m_tx_in;
+		u8 m_sda_out;
+		u8 m_scl_in;
+
+		u8 m_state;
+		u8 m_next_state;
 
 		emu_timer *m_timer_mbus;
-		devcb_write_line write_sda, write_scl, write_irq;
+		devcb_write_line write_sda;
+		devcb_write_line write_scl;
+		devcb_read_line read_sda;
+		devcb_write_line write_irq;
 };
 
 class coldfire_timer_device : public device_t {
@@ -326,8 +372,7 @@ public:
 
 	// Parallel Port
 	auto gpio_w_cb() { return m_gpio_w_cb.bind(); }
-	void gpio_pin_w(int pin, int state);
-	void gpio_port_w(u8 state);
+	auto gpio_r_cb() { return m_gpio_r_cb.bind(); }
 
 	// DUART
 	auto tx1_w_cb() { return write_tx1.bind(); }
@@ -336,8 +381,9 @@ public:
 	void rx2_w(int state) { m_uart[1]->rx_a_w(state); }
 
 	// I2C / MBUS
-	void sda_write(u8 state){ m_mbus->sda_write(state); }
+	void scl_write(u8 state){ m_mbus->scl_write(state); }
 	auto sda_w_cb() { return write_sda.bind(); }
+	auto sda_r_cb() { return read_sda.bind(); }
 	auto scl_w_cb() { return write_scl.bind(); }
 
 	// IRQ/IPL - If using levels, recomended to use the 74148 device with this.
@@ -481,23 +527,26 @@ private:
 	/* parallel port */
 	// just an 8 bit gpio port
 	inline u8 ppddr_r(){ return m_ppddr; }
-	inline u8 ppdat_r(){ return (m_ppdat_in | (m_ppdat_out & m_ppddr)); }
+	inline u8 ppdat_r(){ return (m_gpio_r_cb() | (m_ppdat_out & m_ppddr)); }
 
 	void ppddr_w(u8 data);
 	void ppdat_w(u8 data);
 
 	u8 m_ppddr;
-	u8 m_ppdat_in;
 	u8 m_ppdat_out;
 	devcb_write8 m_gpio_w_cb;
+	devcb_read8 m_gpio_r_cb;
 
 	/* MBUS Module */
 	// I2C host/device but Motorola
 	void mbus_sda_w(int state){ write_sda(state); }
+	int mbus_sda_r(){ return read_sda(); }
 	void mbus_scl_w(int state){ write_scl(state); }
 	void mbus_irq_w(int state){ m_sim->set_external_interrupt(MBUS_IRQ, state); }
 	required_device<coldfire_mbus_device> m_mbus;
-	devcb_write_line write_sda, write_scl;
+	devcb_write_line write_sda;
+	devcb_write_line write_scl;
+	devcb_read_line read_sda;
 
 	/* DMA Modules */
 	required_device_array<coldfire_dma_device, 2> m_dma;

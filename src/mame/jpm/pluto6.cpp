@@ -461,7 +461,6 @@ void pluto6_state::auxout_callback(offs_t offset, uint8_t data){
 
 // I2C BUS
 void pluto6_state::pluto_sda(uint8_t state){
-	m_maincpu->sda_write(state);
 	m_pic->sda_write(state);
 	if(eeprom_installed) m_i2cmem->write_sda(state);    // i2cmem seems to not have a write_line call back?
 }

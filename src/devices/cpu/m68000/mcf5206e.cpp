@@ -76,9 +76,11 @@ mcf5206e_device::mcf5206e_device(const machine_config &mconfig, const char *tag,
 	, write_tx1(*this)
 	, write_tx2(*this)
 	, m_gpio_w_cb(*this)
+	, m_gpio_r_cb(*this, 0)
 	, m_mbus(*this, "coldfire_mbus")
 	, write_sda(*this)
 	, write_scl(*this)
+	, read_sda(*this, 0)
 	, m_dma(*this, "coldfire_dma%u", 0U)
 {
 }
@@ -109,6 +111,7 @@ void mcf5206e_device::device_add_mconfig(machine_config &config)
 
 	COLDFIRE_MBUS(config, m_mbus, this->clock());
 	m_mbus->sda_cb().set(FUNC(mcf5206e_device::mbus_sda_w));
+	m_mbus->sdar_cb().set(FUNC(mcf5206e_device::mbus_sda_r));
 	m_mbus->scl_cb().set(FUNC(mcf5206e_device::mbus_scl_w));
 	m_mbus->irq_cb().set(FUNC(mcf5206e_device::mbus_irq_w));
 
@@ -141,7 +144,6 @@ void mcf5206e_device::device_start()
 	save_item(NAME(m_dmcr));
 
 	save_item(NAME(m_ppddr));
-	save_item(NAME(m_ppdat_in));
 	save_item(NAME(m_ppdat_out));
 }
 
@@ -161,63 +163,63 @@ void mcf5206e_device::device_reset()
 void mcf5206e_device::coldfire_register_map(address_map &map)
 {
 	/* SIM Module */
-	map(0xf0000000, 0xf00000cf).m(m_sim, FUNC(coldfire_sim_device::sim_map));
+	map(0xffff0000, 0xffff00cf).m(m_sim, FUNC(coldfire_sim_device::sim_map));
 
 	/* dram controller */
-	map(0xf0000046, 0xf0000047).rw(FUNC(mcf5206e_device::dcrr_r), FUNC(mcf5206e_device::dcrr_w));
-	map(0xf000004a, 0xf000004b).rw(FUNC(mcf5206e_device::dctr_r), FUNC(mcf5206e_device::dctr_w));
-	map(0xf000004c, 0xf000004d).rw(FUNC(mcf5206e_device::dcar0_r), FUNC(mcf5206e_device::dcar0_w));
-	map(0xf0000050, 0xf0000053).rw(FUNC(mcf5206e_device::dcmr0_r), FUNC(mcf5206e_device::dcmr0_w));
-	map(0xf0000057, 0xf0000057).rw(FUNC(mcf5206e_device::dccr0_r), FUNC(mcf5206e_device::dccr0_w));
-	map(0xf0000058, 0xf0000059).rw(FUNC(mcf5206e_device::dcar1_r), FUNC(mcf5206e_device::dcar1_w));
-	map(0xf000005c, 0xf000005f).rw(FUNC(mcf5206e_device::dcmr1_r), FUNC(mcf5206e_device::dcmr1_w));
-	map(0xf0000063, 0xf0000063).rw(FUNC(mcf5206e_device::dccr1_r), FUNC(mcf5206e_device::dccr1_w));
+	map(0xffff0046, 0xffff0047).rw(FUNC(mcf5206e_device::dcrr_r), FUNC(mcf5206e_device::dcrr_w));
+	map(0xffff004a, 0xffff004b).rw(FUNC(mcf5206e_device::dctr_r), FUNC(mcf5206e_device::dctr_w));
+	map(0xffff004c, 0xffff004d).rw(FUNC(mcf5206e_device::dcar0_r), FUNC(mcf5206e_device::dcar0_w));
+	map(0xffff0050, 0xffff0053).rw(FUNC(mcf5206e_device::dcmr0_r), FUNC(mcf5206e_device::dcmr0_w));
+	map(0xffff0057, 0xffff0057).rw(FUNC(mcf5206e_device::dccr0_r), FUNC(mcf5206e_device::dccr0_w));
+	map(0xffff0058, 0xffff0059).rw(FUNC(mcf5206e_device::dcar1_r), FUNC(mcf5206e_device::dcar1_w));
+	map(0xffff005c, 0xffff005f).rw(FUNC(mcf5206e_device::dcmr1_r), FUNC(mcf5206e_device::dcmr1_w));
+	map(0xffff0063, 0xffff0063).rw(FUNC(mcf5206e_device::dccr1_r), FUNC(mcf5206e_device::dccr1_w));
 
 	/* chip select registers */
-	map(0xf0000064, 0xf0000065).rw(FUNC(mcf5206e_device::csar0_r), FUNC(mcf5206e_device::csar0_w));
-	map(0xf0000068, 0xf000006b).rw(FUNC(mcf5206e_device::csmr0_r), FUNC(mcf5206e_device::csmr0_w));
-	map(0xf000006e, 0xf000006e).rw(FUNC(mcf5206e_device::cscr0_r), FUNC(mcf5206e_device::cscr0_w));
-	map(0xf0000070, 0xf0000071).rw(FUNC(mcf5206e_device::csar1_r), FUNC(mcf5206e_device::csar1_w));
-	map(0xf0000074, 0xf0000077).rw(FUNC(mcf5206e_device::csmr1_r), FUNC(mcf5206e_device::csmr1_w));
-	map(0xf000007a, 0xf000007a).rw(FUNC(mcf5206e_device::cscr1_r), FUNC(mcf5206e_device::cscr1_w));
-	map(0xf000007c, 0xf000007d).rw(FUNC(mcf5206e_device::csar2_r), FUNC(mcf5206e_device::csar2_w));
-	map(0xf0000080, 0xf0000083).rw(FUNC(mcf5206e_device::csmr2_r), FUNC(mcf5206e_device::csmr2_w));
-	map(0xf0000086, 0xf0000086).rw(FUNC(mcf5206e_device::cscr2_r), FUNC(mcf5206e_device::cscr2_w));
-	map(0xf0000088, 0xf0000089).rw(FUNC(mcf5206e_device::csar3_r), FUNC(mcf5206e_device::csar3_w));
-	map(0xf000008c, 0xf000008f).rw(FUNC(mcf5206e_device::csmr3_r), FUNC(mcf5206e_device::csmr3_w));
-	map(0xf0000092, 0xf0000092).rw(FUNC(mcf5206e_device::cscr3_r), FUNC(mcf5206e_device::cscr3_w));
-	map(0xf0000094, 0xf0000095).rw(FUNC(mcf5206e_device::csar4_r), FUNC(mcf5206e_device::csar4_w));
-	map(0xf0000098, 0xf000009b).rw(FUNC(mcf5206e_device::csmr4_r), FUNC(mcf5206e_device::csmr4_w));
-	map(0xf000009e, 0xf000009e).rw(FUNC(mcf5206e_device::cscr4_r), FUNC(mcf5206e_device::cscr4_w));
-	map(0xf00000a0, 0xf00000a1).rw(FUNC(mcf5206e_device::csar5_r), FUNC(mcf5206e_device::csar5_w));
-	map(0xf00000a4, 0xf00000a7).rw(FUNC(mcf5206e_device::csmr5_r), FUNC(mcf5206e_device::csmr5_w));
-	map(0xf00000aa, 0xf00000aa).rw(FUNC(mcf5206e_device::cscr5_r), FUNC(mcf5206e_device::cscr5_w));
-	map(0xf00000ac, 0xf00000ad).rw(FUNC(mcf5206e_device::csar6_r), FUNC(mcf5206e_device::csar6_w));
-	map(0xf00000b0, 0xf00000b3).rw(FUNC(mcf5206e_device::csmr6_r), FUNC(mcf5206e_device::csmr6_w));
-	map(0xf00000b6, 0xf00000b6).rw(FUNC(mcf5206e_device::cscr6_r), FUNC(mcf5206e_device::cscr6_w));
-	map(0xf00000b8, 0xf00000b9).rw(FUNC(mcf5206e_device::csar7_r), FUNC(mcf5206e_device::csar7_w));
-	map(0xf00000bc, 0xf00000bf).rw(FUNC(mcf5206e_device::csmr7_r), FUNC(mcf5206e_device::csmr7_w));
-	map(0xf00000c2, 0xf00000c2).rw(FUNC(mcf5206e_device::cscr7_r), FUNC(mcf5206e_device::cscr7_w));
-	map(0xf00000c4, 0xf00000c7).rw(FUNC(mcf5206e_device::dmcr_r), FUNC(mcf5206e_device::dmcr_w));
+	map(0xffff0064, 0xffff0065).rw(FUNC(mcf5206e_device::csar0_r), FUNC(mcf5206e_device::csar0_w));
+	map(0xffff0068, 0xffff006b).rw(FUNC(mcf5206e_device::csmr0_r), FUNC(mcf5206e_device::csmr0_w));
+	map(0xffff006e, 0xffff006e).rw(FUNC(mcf5206e_device::cscr0_r), FUNC(mcf5206e_device::cscr0_w));
+	map(0xffff0070, 0xffff0071).rw(FUNC(mcf5206e_device::csar1_r), FUNC(mcf5206e_device::csar1_w));
+	map(0xffff0074, 0xffff0077).rw(FUNC(mcf5206e_device::csmr1_r), FUNC(mcf5206e_device::csmr1_w));
+	map(0xffff007a, 0xffff007a).rw(FUNC(mcf5206e_device::cscr1_r), FUNC(mcf5206e_device::cscr1_w));
+	map(0xffff007c, 0xffff007d).rw(FUNC(mcf5206e_device::csar2_r), FUNC(mcf5206e_device::csar2_w));
+	map(0xffff0080, 0xffff0083).rw(FUNC(mcf5206e_device::csmr2_r), FUNC(mcf5206e_device::csmr2_w));
+	map(0xffff0086, 0xffff0086).rw(FUNC(mcf5206e_device::cscr2_r), FUNC(mcf5206e_device::cscr2_w));
+	map(0xffff0088, 0xffff0089).rw(FUNC(mcf5206e_device::csar3_r), FUNC(mcf5206e_device::csar3_w));
+	map(0xffff008c, 0xffff008f).rw(FUNC(mcf5206e_device::csmr3_r), FUNC(mcf5206e_device::csmr3_w));
+	map(0xffff0092, 0xffff0092).rw(FUNC(mcf5206e_device::cscr3_r), FUNC(mcf5206e_device::cscr3_w));
+	map(0xffff0094, 0xffff0095).rw(FUNC(mcf5206e_device::csar4_r), FUNC(mcf5206e_device::csar4_w));
+	map(0xffff0098, 0xffff009b).rw(FUNC(mcf5206e_device::csmr4_r), FUNC(mcf5206e_device::csmr4_w));
+	map(0xffff009e, 0xffff009e).rw(FUNC(mcf5206e_device::cscr4_r), FUNC(mcf5206e_device::cscr4_w));
+	map(0xffff00a0, 0xffff00a1).rw(FUNC(mcf5206e_device::csar5_r), FUNC(mcf5206e_device::csar5_w));
+	map(0xffff00a4, 0xffff00a7).rw(FUNC(mcf5206e_device::csmr5_r), FUNC(mcf5206e_device::csmr5_w));
+	map(0xffff00aa, 0xffff00aa).rw(FUNC(mcf5206e_device::cscr5_r), FUNC(mcf5206e_device::cscr5_w));
+	map(0xffff00ac, 0xffff00ad).rw(FUNC(mcf5206e_device::csar6_r), FUNC(mcf5206e_device::csar6_w));
+	map(0xffff00b0, 0xffff00b3).rw(FUNC(mcf5206e_device::csmr6_r), FUNC(mcf5206e_device::csmr6_w));
+	map(0xffff00b6, 0xffff00b6).rw(FUNC(mcf5206e_device::cscr6_r), FUNC(mcf5206e_device::cscr6_w));
+	map(0xffff00b8, 0xffff00b9).rw(FUNC(mcf5206e_device::csar7_r), FUNC(mcf5206e_device::csar7_w));
+	map(0xffff00bc, 0xffff00bf).rw(FUNC(mcf5206e_device::csmr7_r), FUNC(mcf5206e_device::csmr7_w));
+	map(0xffff00c2, 0xffff00c2).rw(FUNC(mcf5206e_device::cscr7_r), FUNC(mcf5206e_device::cscr7_w));
+	map(0xffff00c4, 0xffff00c7).rw(FUNC(mcf5206e_device::dmcr_r), FUNC(mcf5206e_device::dmcr_w));
 
 	// timer 1
-	map(0xf0000100, 0xf000011f).m(m_timer[0], FUNC(coldfire_timer_device::timer_map));
-	map(0xf0000120, 0xf000013f).m(m_timer[1], FUNC(coldfire_timer_device::timer_map));
+	map(0xffff0100, 0xffff011f).m(m_timer[0], FUNC(coldfire_timer_device::timer_map));
+	map(0xffff0120, 0xffff013f).m(m_timer[1], FUNC(coldfire_timer_device::timer_map));
 
 	// uart (mc68681 derrived)
-	map(0xf0000140, 0xf000017c).rw(m_uart[0], FUNC(mcf5206e_uart_device::read), FUNC(mcf5206e_uart_device::write));
-	map(0xf0000180, 0xf00001bc).rw(m_uart[1], FUNC(mcf5206e_uart_device::read), FUNC(mcf5206e_uart_device::write));
+	map(0xffff0140, 0xffff017c).rw(m_uart[0], FUNC(mcf5206e_uart_device::read), FUNC(mcf5206e_uart_device::write));
+	map(0xffff0180, 0xffff01bc).rw(m_uart[1], FUNC(mcf5206e_uart_device::read), FUNC(mcf5206e_uart_device::write));
 
 	// parallel port
-	map(0xf00001c5, 0xf00001c5).rw(FUNC(mcf5206e_device::ppddr_r), FUNC(mcf5206e_device::ppddr_w));
-	map(0xf00001c9, 0xf00001c9).rw(FUNC(mcf5206e_device::ppdat_r), FUNC(mcf5206e_device::ppdat_w));
+	map(0xffff01c5, 0xffff01c5).rw(FUNC(mcf5206e_device::ppddr_r), FUNC(mcf5206e_device::ppddr_w));
+	map(0xffff01c9, 0xffff01c9).rw(FUNC(mcf5206e_device::ppdat_r), FUNC(mcf5206e_device::ppdat_w));
 
 	// mbus (i2c)
-	map(0xf00001e0, 0xf00001ff).m(m_mbus, FUNC(coldfire_mbus_device::mbus_map));
+	map(0xffff01e0, 0xffff01ff).m(m_mbus, FUNC(coldfire_mbus_device::mbus_map));
 
 	// dma
-	map(0xf0000200, 0xf000021f).m(m_dma[0], FUNC(coldfire_dma_device::dma_map));
-	map(0xf0000240, 0xf000025f).m(m_dma[1], FUNC(coldfire_dma_device::dma_map));
+	map(0xffff0200, 0xffff021f).m(m_dma[0], FUNC(coldfire_dma_device::dma_map));
+	map(0xffff0240, 0xffff025f).m(m_dma[1], FUNC(coldfire_dma_device::dma_map));
 }
 
 void mcf5206e_device::coldfire_vector_map(address_map &map){
@@ -323,22 +325,6 @@ void mcf5206e_device::dmcr_w(u16 data)
 	LOGMASKED(LOG_DEBUG, "%s: (Default Memory Control Register) DMCR_w %04x\n", this->machine().describe_context(), data);
 }
 
-
-/*
- * Parallel port
- * Just a 8 bit GPIO. Nothing to see here
- */
-
-void mcf5206e_device::gpio_pin_w(int pin, int state)
-{
-	BITWRITE(m_ppdat_in, pin, state);
-}
-
-void mcf5206e_device::gpio_port_w(u8 state)
-{
-	m_ppdat_in = state;
-}
-
 void mcf5206e_device::ppddr_w(u8 data)
 {
 	LOGMASKED(LOG_DEBUG, "%s: (Port A Data Direction Register) PPDDR_w %02x\n", this->machine().describe_context(), data);
@@ -350,7 +336,7 @@ void mcf5206e_device::ppddr_w(u8 data)
 		if(!BIT(m_sim->get_par(), 5)) mask |= 0xf0; // PP 4-7 / PST 0-3
 
 		// GPIO pins will physically be set to the current input and output state, and masked according to PAR
-		m_gpio_w_cb(((m_ppdat_out & m_ppddr) | (m_ppdat_in & ~m_ppddr)) & mask);
+		m_gpio_w_cb(((m_ppdat_out & m_ppddr) | (m_gpio_r_cb() & ~m_ppddr)) & mask);
 	}
 
 	m_ppddr = data;
@@ -365,7 +351,7 @@ void mcf5206e_device::ppdat_w(u8 data)
 	if(!BIT(m_sim->get_par(), 4)) mask |= 0x0f; // PP 0-3 / DDATA 0-3
 	if(!BIT(m_sim->get_par(), 5)) mask |= 0xf0; // PP 4-7 / PST 0-3
 
-	m_gpio_w_cb(((m_ppdat_out & m_ppddr) | (m_ppdat_in & ~m_ppddr)) & mask);
+	m_gpio_w_cb(((m_ppdat_out & m_ppddr) | (m_gpio_r_cb() & ~m_ppddr)) & mask);
 }
 
 
@@ -538,7 +524,7 @@ void coldfire_sim_device::set_external_interrupt(int level, int state)
 		// External IPL pins are discrete (IRQ1, IRQ4, IRQ7)
 		switch(level){
 			case 1: BITWRITE(m_external_ipl, 0, state); break;
-			case 4: BITWRITE(m_external_ipl, 1, state); break;
+			case 4: set_interrupt(4, state); break ;//BITWRITE(m_external_ipl, 1, state); break;
 			case 7: BITWRITE(m_external_ipl, 2, state); break;
 			default: break;
 		}
@@ -579,6 +565,7 @@ u8 coldfire_sim_device::interrupt_callback(offs_t level)
 	// Check if ICR specifies to use autovectoring
 	if (BIT(highest_priority_icr, 7)) {
 		vector = m68000_base_device::autovector(ipl);
+		//printf("ipl %x %x\n",ipl,vector);
 	} else {
 		// Determine the correct vector to return
 		switch (highest_priority_device) {
@@ -851,7 +838,6 @@ void mcf5206e_device::init_regs(bool first_init)
 	m_dmcr = 0x0000;
 
 	m_ppddr = 0x00;
-	m_ppdat_in = 0x00;
 	m_ppdat_out = 0x00;
 }
 
@@ -865,6 +851,7 @@ coldfire_mbus_device::coldfire_mbus_device(const machine_config &mconfig, const 
 	device_t(mconfig, COLDFIRE_MBUS, tag, owner, clock)
 	, write_sda(*this)
 	, write_scl(*this)
+	, read_sda(*this, 0)
 	, write_irq(*this)
 {
 }
@@ -880,11 +867,15 @@ void coldfire_mbus_device::device_start()
 	save_item(NAME(m_mfdr));
 	save_item(NAME(m_mbdr));
 
-	save_item(NAME(m_tx_in_progress));
+	save_item(NAME(m_done_nak_read));
+	save_item(NAME(m_byte_to_tx));
 	save_item(NAME(m_clk_state));
+	save_item(NAME(m_clock_count));
 	save_item(NAME(m_tx_bit));
-	save_item(NAME(m_tx_out));
-	save_item(NAME(m_tx_in));
+	save_item(NAME(m_sda_out));
+	save_item(NAME(m_scl_in));
+	save_item(NAME(m_next_state));
+	save_item(NAME(m_state));
 }
 
 void coldfire_mbus_device::device_reset()
@@ -895,11 +886,11 @@ void coldfire_mbus_device::device_reset()
 	m_mbsr = 0x81;
 	m_mbdr = 0x00;
 
-	m_tx_in_progress = false;
-	m_clk_state = 1;
+	m_byte_to_tx = false;
+	m_clk_state = true;
 	m_tx_bit = 0;
-	m_tx_out = 0;
-	m_tx_in = 0;
+	m_sda_out = 1;
+	m_scl_in = 1;
 
 	m_timer_mbus->adjust(attotime::never);
 }
@@ -916,7 +907,125 @@ void coldfire_mbus_device::mbus_map(address_map &map)
 
 TIMER_CALLBACK_MEMBER(coldfire_mbus_device::mbus_callback)
 {
-	// Do bit transfers etc
+	//printf("tcb\n");
+	if(BIT(m_mbcr, MEN))
+	{
+		//printf("callback %x %x\n",m_state,m_next_state);
+		m_state = m_next_state;
+		switch(m_state)
+		{
+			case STATE_START_BIT:
+				if(!m_byte_to_tx)
+				{
+					//printf("no byte to tx\n");
+					m_next_state = STATE_IDLE_IN_USE;
+				}
+				else
+				{
+					//printf("byte to tx\n");
+					m_byte_to_tx = false;
+					m_tx_bit = 8;
+					m_next_state = STATE_SET_TX_CLOCK_HIGH;
+				}
+				m_clk_state = false;
+				write_scl(m_clk_state);
+				m_mbsr |= MBB;
+				start_timer(2);
+				break;
+				
+			case STATE_STOP_BIT_CLOCK_HIGH:
+				m_next_state = STATE_STOP_BIT_DATA_HIGH;
+				m_clk_state = true;
+				write_scl(m_clk_state);
+				break;
+				
+			case STATE_STOP_BIT_DATA_HIGH:
+				m_sda_out = 1;
+				write_sda(m_sda_out);
+				start_timer(2);
+				m_next_state = STATE_IDLE;
+				m_mbsr &= ~MBB;
+				break;
+				
+			case STATE_RESTART_BIT_CLOCK_HIGH:
+				m_next_state = STATE_RESTART_BIT_DATA_LOW;
+				m_clk_state = true;
+				write_scl(m_clk_state);
+				break;
+			
+			case STATE_RESTART_BIT_DATA_LOW:
+				m_sda_out = 0;
+				write_sda(m_sda_out);
+				m_next_state = STATE_START_BIT;
+				start_timer(2);
+				break;
+				
+			case STATE_SET_TX_CLOCK_HIGH:
+				if(BIT(m_mbcr, MTX))
+				{
+					m_sda_out = BIT(m_mbdr, m_tx_bit - 1);
+				}
+				else
+				{
+					m_sda_out = true;
+				}
+				write_sda(m_sda_out);
+				m_mbdr &= ~(1 << (m_tx_bit - 1));
+				m_mbdr |= (read_sda() << (m_tx_bit - 1));
+				m_next_state = STATE_SET_TX_CLOCK_LOW;
+				m_clk_state = true;
+				write_scl(m_clk_state);
+				break;
+				
+			case STATE_SET_TX_CLOCK_LOW:
+				m_clk_state = false;
+				write_scl(m_clk_state);
+				m_tx_bit--;
+				if(m_tx_bit)
+				{
+					m_next_state = STATE_SET_TX_CLOCK_HIGH;
+				}
+				else
+				{
+					m_next_state = STATE_SET_TX_ACK_CLOCK_HIGH;
+					if(!BIT(m_mbcr, MTX))
+					{
+						m_sda_out = BIT(m_mbcr, TXAK);
+						write_sda(m_sda_out);
+					}
+				}
+				start_timer(2);
+				break;
+				
+			case STATE_SET_TX_ACK_CLOCK_HIGH:
+				m_next_state = STATE_READ_TX_ACK;
+				m_clk_state = true;
+				write_scl(m_clk_state);
+				break;
+				
+			case STATE_READ_TX_ACK:
+				if(BIT(m_mbcr, MTX))
+				{
+					if(read_sda())
+					{
+						m_mbsr |= RXAK;
+						//printf("rxak 1\n");
+					}
+					else
+					{
+						//printf("rxak 0\n");
+						m_mbsr &= ~RXAK;
+					}
+				}
+				m_mbsr |= MIF;
+				m_clk_state = false;
+				write_scl(m_clk_state);
+				m_next_state = STATE_IDLE_IN_USE;
+				start_timer(2);
+				//printf("don tx ack\n");
+				break;
+		}
+	}
 }
 
 void coldfire_mbus_device::madr_w(u8 data)
@@ -928,44 +1037,157 @@ void coldfire_mbus_device::madr_w(u8 data)
 void coldfire_mbus_device::mfdr_w(u8 data)
 {
 	m_mfdr = (data & 0x3F);
+	//printf("i2c div w %x\n",m_mfdr);
 	LOGMASKED(LOG_MBUS, "%s: (M-Bus Frequency Divider Register) mfdr_w: %02x\n", this->machine().describe_context(), data);
 }
 
 void coldfire_mbus_device::mbcr_w(u8 data)
 {
-	m_mbcr = (data & 0xfc);
 	LOGMASKED(LOG_MBUS, "%s: (M-Bus Control Register) mbcr_w: %02x\n", this->machine().describe_context(), data);
+	//printf("i2c cr %x\n",data);
+	
+	if(BIT(data, MEN))
+	{
+		if(BIT(data, MSTA))
+		{
+			if(!BIT(m_mbcr, MSTA)) // 0->1 generate start bit
+			{
+				m_done_nak_read = false;
+				if(!read_sda() || !m_scl_in)
+				{
+					//printf("set mal %x %x\n",read_sda(),m_scl_in);
+					m_mbsr |= MAL;
+				}
+				else
+				{
+					//printf("doing start\n");
+					m_sda_out = 0;
+					write_sda(0);
+					m_tx_bit = 8;
+					m_next_state = STATE_START_BIT;
+					start_timer(2);
+				}
+			}
+		}
+		else
+		{
+			if(BIT(m_mbcr, MSTA)) // 1->0 generate stop bit
+			{
+				//printf("Doing stop\n");
+				m_sda_out = 0;
+				write_sda(0);
+				m_next_state = STATE_STOP_BIT_CLOCK_HIGH;
+				start_timer(2);
+			}
+		}
+		
+		if(BIT(data, RSTA))
+		{
+			data &= ~(1 << RSTA);
+			//printf("restart\n");
+			m_sda_out = 1;
+			write_sda(1);
+			m_next_state = STATE_RESTART_BIT_CLOCK_HIGH;
+			start_timer(2);
+		}
+	}
+	else
+	{
+		m_sda_out = 1;
+		write_sda(1);
+		write_scl(1);
+	}
+	m_mbcr = (data & 0xfc);
 }
 
 u8 coldfire_mbus_device::mbsr_r()
 {
-	int hack = 0x00;
-
-	hack ^= (machine().rand()&0xff);
 	LOGMASKED(LOG_MBUS, "%s: (M-Bus Status Register) mbsr_r: %02x\n", this->machine().describe_context(), m_mbsr);
-	return m_mbsr ^ hack; // will loop on this after a while
+	//printf("i2c sr r %x\n",m_mbsr);
+	return m_mbsr;
 }
 
 void coldfire_mbus_device::mbsr_w(u8 data)
 {
-	m_mbsr = (data & 0x14); // MAL & MIF
+	m_mbsr = data;
+	//printf("i2c sr w %x\n",m_mbsr);
 	LOGMASKED(LOG_MBUS, "%s: (M-Bus Status Register) mbsr_w: %02x\n", this->machine().describe_context(), data);
 }
 
 u8 coldfire_mbus_device::mbdr_r()
 {
-	int hack = 0x00;
-	hack ^= (machine().rand()&0xff);
 	LOGMASKED(LOG_MBUS, "%s: (M-Bus Data I/O Register) mbdr_r: %02x\n", this->machine().describe_context(), m_mbdr);
-	return m_mbdr ^ hack;
+	//printf("i2c mbdr r %x\n",m_mbdr);
+	if(!BIT(m_mbcr, MTX))
+	{
+		if(!BIT(m_mbcr, TXAK) || !m_done_nak_read)
+		{
+			m_tx_bit = 8;
+			m_next_state = STATE_SET_TX_CLOCK_HIGH;
+			if(BIT(m_mbcr, TXAK))
+			{
+				m_done_nak_read = true;
+			}
+			start_timer(2);
+		}
+	}
+	//printf("rx byte %x\n",m_mbdr);
+	return m_mbdr;
 }
 
 void coldfire_mbus_device::mbdr_w(u8 data)
 {
 	m_mbdr = data;
+	if(BIT(m_mbcr, MEN) && BIT(m_mbcr, MTX))
+	{
+		m_byte_to_tx = true;
+		//printf("tx byte %x\n",data);
+		//printf("byte to tx %x %x\n",m_state,m_next_state);
+		//if(m_state == STATE_IDLE_IN_USE && m_next_state != STATE_RESTART_BIT_CLOCK_HIGH)
+		if((m_state == STATE_READ_TX_ACK && m_next_state == STATE_IDLE_IN_USE) || (m_state == STATE_IDLE_IN_USE && m_next_state != STATE_RESTART_BIT_CLOCK_HIGH) )
+		{
+			m_tx_bit = 8;
+			m_next_state = STATE_SET_TX_CLOCK_HIGH;
+			start_timer(2);
+		}
+	}
+	//printf("mb dr w %x\n",m_mbdr);
 	LOGMASKED(LOG_MBUS, "%s: (M-Bus Data I/O Register) mbdr_w: %02x\n", this->machine().describe_context(), data);
 }
 
+void coldfire_mbus_device::start_timer(u16 div)
+{
+	static constexpr u32 divider[64] = {28, 30, 34, 40, 44, 48, 56, 68, 80, 88, 104, 128, 144, 160, 192, 240,
+										288, 320, 384, 480, 576, 640, 768, 960, 1152, 1280, 1536, 1920, 2304, 2560, 3072, 3840,
+										20, 22, 24, 26, 28, 32, 36, 40, 48, 56, 64, 72, 80, 96, 112, 128,
+										160, 192, 224, 256, 320, 384, 448, 512, 640, 768, 896, 1024, 1280, 1536, 1792, 2048};
+										
+	m_timer_mbus->adjust(clocks_to_attotime(divider[m_mfdr]/div));
+}
+
+void coldfire_mbus_device::scl_write(u8 state)
+{
+	if(BIT(m_mbcr, MEN))
+	{
+		if(state && !m_scl_in)
+		{
+			//printf("cpu callback scl high\n");
+			m_scl_in = state;
+			start_timer(2);
+		}
+		else if(!state && m_scl_in)
+		{
+			//printf("cpu callback scl low\n");
+			m_scl_in = state;
+			//process_clock_low();
+			//start_timer(2);
+		}
+	}
+	else
+	{
+		m_state = STATE_IDLE;
+	}
+}
 
 /*
  * DMA Module
